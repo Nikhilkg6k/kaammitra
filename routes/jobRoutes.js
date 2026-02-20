@@ -1,29 +1,72 @@
-/* ===== FIND NEARBY WORKERS ===== */
-router.get("/nearby/:lat/:lng/:skill", async(req,res)=>{
+const express = require("express");
+const router = express.Router();
+const Job = require("../models/Job");
 
-    const lat = Number(req.params.lat);
-    const lng = Number(req.params.lng);
-    const skill = req.params.skill.trim().toLowerCase();
+/* ================= CREATE JOB ================= */
+router.post("/create", async (req, res) => {
+    try {
 
-    const workers = await Worker.find({
-        availableToday:true,
-        skills: { $regex: new RegExp("^"+skill+"$", "i") }
-    });
+        const job = new Job({
+            employerPhone: req.body.employerPhone,
+            workerType: req.body.workerType.trim(),
+            wage: Number(req.body.wage),
+            description: req.body.description,
 
-    const nearby = workers.filter(w=>{
+            location: {
+                lat: Number(req.body.lat),
+                lng: Number(req.body.lng)
+            }
+        });
 
-        if(!w.location) return false;
+        await job.save();
+        res.json(job);
 
-        const wLat = Number(w.location.lat);
-        const wLng = Number(w.location.lng);
-
-        const distance = Math.sqrt(
-            Math.pow((lat - wLat) * 111, 2) +
-            Math.pow((lng - wLng) * 111, 2)
-        );
-
-        return distance <= 100;
-    });
-
-    res.json(nearby);
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ error: "Job creation failed" });
+    }
 });
+
+/* ================= NEARBY JOB SEARCH ================= */
+router.get("/nearby/:lat/:lng/:skill", async (req, res) => {
+
+    try {
+
+        const lat = Number(req.params.lat);
+        const lng = Number(req.params.lng);
+        let skill = req.params.skill.trim().toLowerCase();
+
+        const jobs = await Job.find({
+            workerType: { $regex: new RegExp("^" + skill + "$", "i") }
+        });
+
+        const nearby = jobs.filter(job => {
+
+            if (!job.location) return false;
+
+            const jobLat = Number(job.location.lat);
+            const jobLng = Number(job.location.lng);
+
+            const distance = Math.sqrt(
+                Math.pow((lat - jobLat) * 111, 2) +
+                Math.pow((lng - jobLng) * 111, 2)
+            );
+
+            return distance <= 100;
+        });
+
+        res.json(nearby);
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ error: "Nearby search failed" });
+    }
+});
+
+/* ================= ALL JOBS ================= */
+router.get("/", async (req, res) => {
+    const jobs = await Job.find().sort({ createdAt: -1 });
+    res.json(jobs);
+});
+
+module.exports = router;
