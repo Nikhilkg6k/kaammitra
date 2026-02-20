@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>KaamMitra</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{
+    font-family: Arial, sans-serif;
+    background:#f3f4f6;
+    margin:0;
+}
+header{
+    background:#2563eb;
+    color:white;
+    padding:18px;
+    text-align:center;
+    font-size:24px;
+    font-weight:bold;
+}
+.container{
+    max-width:500px;
+    margin:auto;
+    padding:15px;
+}
+.card{
+    background:white;
+    padding:20px;
+    margin-bottom:20px;
+    border-radius:14px;
+    box-shadow:0 5px 18px rgba(0,0,0,0.12);
+}
+.card h3{
+    margin-top:0;
+    color:#2563eb;
+}
+input{
+    width:100%;
+    padding:12px;
+    margin:8px 0;
+    border-radius:8px;
+    border:1px solid #ddd;
+}
+button{
+    width:100%;
+    padding:12px;
+    background:#2563eb;
+    color:white;
+    border:none;
+    border-radius:10px;
+    cursor:pointer;
+    font-size:15px;
+}
+button:hover{background:#1e40af;}
+.job-card{
+    border:1px solid #ddd;
+    padding:14px;
+    border-radius:12px;
+    margin-top:12px;
+    background:#fafafa;
+}
+#logout{background:#ef4444;margin-top:10px;}
+</style>
+</head>
+
+<body>
+
+<header>👷 KaamMitra</header>
+
+<div class="container">
+
+<div class="card" id="registerCard">
+<h3>Worker Registration</h3>
+<input id="wname" placeholder="Full Name">
+<input id="wphone" placeholder="Phone Number">
+<input id="wskill" placeholder="Skill (Painter, Mason, Helper)">
+<input id="wwage" placeholder="Daily Wage ₹">
+<button onclick="registerWorker()">Create Profile</button>
+</div>
+
+<div class="card">
+<h3>Post a Job (Employer)</h3>
+<input id="jtype" placeholder="Worker Type Needed">
+<input id="jwage" placeholder="Wage Per Day">
+<input id="jphone" placeholder="Employer Phone">
+<input id="jdesc" placeholder="Job Description">
+<button onclick="postJob()">Post Job</button>
+</div>
+
+<div class="card">
+<h3>Nearby Jobs</h3>
+<button id="availabilityBtn" onclick="toggleAvailability()">Checking...</button>
+<div id="jobs">Loading dashboard...</div>
+<button id="logout" onclick="logoutWorker()">Logout Worker</button>
+</div>
+
+</div>
+
+<script>
+
+/* ===== REGISTER WORKER ===== */
+async function registerWorker(){
+
+const skillValue = wskill.value.trim() || "Helper";
+
+const res = await fetch("/api/workers/register",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({
+name:wname.value,
+phone:wphone.value,
+skills:[skillValue],
+dailyWage:Number(wwage.value),
+location:{lat:18.52,lng:73.85}
+})
+});
+
+const worker = await res.json();
+localStorage.setItem("workerPhone", worker.phone);
+
+alert("Registration successful!");
+loadDashboard();
+}
+
+/* ===== POST JOB ===== */
+async function postJob(){
+navigator.geolocation.getCurrentPosition(async(pos)=>{
+const lat = pos.coords.latitude;
+const lng = pos.coords.longitude;
+
+await fetch("/api/jobs/create",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({
+workerType:jtype.value,
+wage:Number(jwage.value),
+employerPhone:jphone.value,
+description:jdesc.value,
+lat:lat,
+lng:lng
+})
+});
+alert("Job Posted!");
+},()=>alert("Allow location to post job"));
+}
+
+/* ===== DASHBOARD ===== */
+async function loadDashboard(){
+
+const phone = localStorage.getItem("workerPhone");
+if(!phone) return;
+
+document.getElementById("registerCard").style.display="none";
+
+const res = await fetch(`/api/workers/login/${phone}`);
+const worker = await res.json();
+if(!worker) return;
+
+/* availability button */
+const btn = document.getElementById("availabilityBtn");
+if(worker.availableToday){
+btn.innerText="🟢 Available Today";
+btn.style.background="#16a34a";
+}else{
+btn.innerText="🔴 Not Available";
+btn.style.background="#ef4444";
+document.getElementById("jobs").innerHTML=
+"<b>You are OFFLINE.</b><br>Turn ON availability.";
+return;
+}
+
+/* safe skill reading */
+const skill = (worker.skills && worker.skills.length>0 && worker.skills[0])
+? worker.skills[0]
+: "Helper";
+
+/* get location and jobs */
+navigator.geolocation.getCurrentPosition(async(pos)=>{
+
+const lat = pos.coords.latitude;
+const lng = pos.coords.longitude;
+
+const jobRes = await fetch(`/api/jobs/nearby/${lat}/${lng}/${skill}`);
+const jobs = await jobRes.json();
+
+let html="";
+if(jobs.length===0) html="<b>No nearby work today.</b>";
+
+jobs.forEach(j=>{
+html+=`
+<div class="job-card">
+<b>${j.workerType}</b><br>
+₹${j.wage} per day<br>
+${j.description}<br>
+<button onclick="window.location.href='tel:${j.employerPhone}'">📞 Call Employer</button>
+</div>`;
+});
+
+document.getElementById("jobs").innerHTML=html;
+});
+}
+
+/* ===== TOGGLE AVAILABILITY ===== */
+async function toggleAvailability(){
+const phone = localStorage.getItem("workerPhone");
+await fetch(`/api/workers/availability/${phone}`,{method:"POST"});
+loadDashboard();
+}
+
+/* ===== LOGOUT ===== */
+function logoutWorker(){
+localStorage.removeItem("workerPhone");
+location.reload();
+}
+
+/* auto dashboard */
+window.onload=()=>{
+loadDashboard();
+setInterval(loadDashboard,20000);
+};
+
+</script>
+
+</body>
+</html>
